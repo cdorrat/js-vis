@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Stream Rank Sample</title>
+    <style>
+      .axis path,
+      .axis line {
+      fill: none;
+      stroke: black;
+      shape-rendering: crispEdges;
+      }
+
+      .axis  {
+      font-family: sans-serif;
+      font-size: 10px;
+      }
+
+      .idPath {
+      fill-opacity: 0;
+      }
+
+      .highlightedPath {
+        stroke: black;
+        stroke-width: 2;
+      }
+
+      .selectedPath {
+        stroke: black;
+        stroke-width: 1;
+        fill: #A7A7B3;
+      }
+
+      .backgroundPath {      
+        fill: #D6D6E3;
+      }
+
+
+    </style>
+    <script src="http://d3js.org/d3.v2.min.js" charset="utf-8"></script>
+    <script src="streamRank.js" type="text/javascript"></script>
+  </head>
+  
+  <body>
+    <h3>Stream Rank Sample</h3>        
+    <div id="testChart2"/>
+
+    <div id="testChart"/>
+    
+    <script type="text/javascript">
+
+      var data2 = [{x: 2012, name: 'A', val: 6.7}, 
+      {x: 2012, name: 'B', val: 6.0}, 
+      {x: 2012, name: 'C', val: 7.1}, 
+      {x: 2011, name: 'A', val: 7.7}, 
+      {x: 2011, name: 'B', val: 7.0}, 
+      {x: 2011, name: 'C', val: 7.6}, 
+      {x: 2010, name: 'A', val: 6.7}, 
+      {x: 2010, name: 'B', val: 6.0}, 
+      {x: 2010, name: 'C', val: 7.1}];
+
+
+      var data = [{"x":1,"name":"Fred","val":50},{"x":1,"name":"Mary","val":25},{"x":1,"name":"Harry","val":40},
+	    {"x":1,"name":"Joanna","val":35},{"x":2,"name":"Fred","val":75},{"x":2,"name":"Mary","val":80},
+	    {"x":2,"name":"Harry","val":40},{"x":2,"name":"Joanna","val":10},{"x":3,"name":"Fred","val":110},
+	    {"x":3,"name":"Mary","val":105},{"x":3,"name":"Harry","val":87},{"x":3,"name":"Joanna","val":42},
+	    {"x":4,"name":"Fred","val":94},{"x":4,"name":"Mary","val":103},{"x":4,"name":"Harry","val":77},
+	    {"x":4,"name":"Joanna","val":91}];
+
+      var layout = streamRankLayout();
+      var chart = streamRank();
+
+
+      d3.select("#testChart")
+        .datum(layout(data))
+        .call(chart);
+
+      var chart2 = streamRank();
+      d3.select("#testChart2")
+        .datum(layout(data2))
+        .call(chart2);
+
+    </script>
+  </body>
+</html>
