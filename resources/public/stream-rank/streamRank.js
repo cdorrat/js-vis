@@ -11,6 +11,7 @@
  *   - height     - height of the svg element in pixels
  *   - idFn       - a function that given a data element returns the id for that series, defaults to d.name
  *   - periodFn   - a function that given a data element returns the label for the x axis defaults to d.x
+ *   - valueFn    - a function that given a data element returns the value for the x axis defaults to d.val
  *   - colorScale - a function that given the id for a series returns a color, defaults to d3.scale.category20
  * 
  * Data Requirements:
@@ -23,15 +24,9 @@ function streamRank() {
   var width = 700;
   var height = 400;
 
-  var detailsData = {
-    'Mary': {'name':'Mary','totalVal':400},
-    'Joanna': {'name':'Joanna','totalVal':750},
-    'Harry': {'name':'Harry','totalVal':480},
-    'Fred': {'name':'Fred','totalVal':390}    
-  };
-
   var idFn = function(d) {return d.name;};
   var periodFn = function(d) { return d.x;};
+  var valueFn = function(d) { return d.val;};
 
   var colorScale;
 
@@ -39,266 +34,277 @@ function streamRank() {
     selection.each(
       function (dataset) {		     		   
 
-	var xScale = d3.scale.ordinal()
-	  .domain(d3.range(0, dataset.length * 2 -1))
-	  .rangeRoundBands([padding.left, width - padding.right]);
+		var xScale = d3.scale.ordinal()
+		  .domain(d3.range(0, dataset.length * 2 -1))
+		  .rangeRoundBands([padding.left, width - padding.right]);
 
-	var yScale =  d3.scale.linear()
-	  .domain([0, 1])
-	  .rangeRound([height - padding.bottom, padding.top]);
+		var yScale =  d3.scale.linear()
+		  .domain([0, 1])
+		  .rangeRound([height - padding.bottom, padding.top]);
 
-	if (! colorScale) {
-	  colorScale = createColorScale(dataset);
-	}
+		if (! colorScale) {
+		  colorScale = createColorScale(dataset);
+		}
 
-	var x = function(d) {return xScale(d.periodIdx * 2) -1;};
-	var y = function(d) {return yScale(d.pcntMax);};
+		var x = function(d) {return xScale(d.periodIdx * 2) -1;};
+		var y = function(d) {return yScale(d.pcntMax);};
 
- 	var svg = d3.select(this)
- 	  .append("svg")
- 	  .attr("width", width)
- 	  .attr("height", height);
+		var svg = d3.select(this)
+			.append("svg")
+			.attr("width", width)
+			.attr("height", height);
 
-	addDetailsTable(d3.select(this));
+		svg.append("rect")
+			.attr("x", 0)
+			.attr("y", 0)
+			.attr("width", width)
+			.attr("height", height)
+			.attr("fill", "white");
 
-	svg.append("rect")
-	.attr("x", 0)
-	.attr("y", 0)
-	.attr("width", width)
-	.attr("height", height)
-	.attr("fill", "white");
+		// add a rect for each value in each timestep
+		svg.selectAll("g")
+		  .data(dataset)
+		  .enter()
+		  .append("g")
+		  .selectAll("rect")
+		  .data(function(d) {return d;})
+		  .enter()
+		  .append("rect")
+		  .attr("x", x)
+		  .attr("y", y)
+		  .attr("width", xScale.rangeBand() +2)
+		  .attr("height", function (d) {return yScale(d.pcntMin) - yScale(d.pcntMax);})
+		  .attr("class", "streamBox")
+		  .attr("rank", function (d) {return d.rank;} )
+		  .attr("fill", function(d) {return colorScale(idFn(d));});
 
-	// add a rect for each value in each timestep
-	svg.selectAll("g")
-	  .data(dataset)
-	  .enter()
-	  .append("g")
-	  .selectAll("rect")
-	  .data(function(d) {return d;})
-	  .enter()
-          .append("rect")
-	  .attr("x", x)
-	  .attr("y", y)
-	  .attr("width", xScale.rangeBand() +2)
-	  .attr("height", function (d) {return yScale(d.pcntMin) - yScale(d.pcntMax);})
-	  .attr("class", "streamBox")
-	  .attr("rank", function (d) {return d.rank;} )
-	  .attr("fill", function(d) {return colorScale(idFn(d));});
+		// provide links from a box to its predecessor in the previous time period (if any)
+		svg.selectAll("g")
+		  .data(dataset)
+		  .selectAll("path")
+		  .data(function(d) {return d;})
+		  .enter()
+		  .append("path")
+		  .attr("d", linkPathDAttr)
+		  .attr("class", "streamBox")
+		  .attr("fill",  function(d) {return colorScale(idFn(d));});
+		
+		var detailsTooltip = createDetailsTooltip(dataset);
 
-	// provide links from a box to its predecessor in the previous time period (if any)
-	svg.selectAll("g")
-	  .data(dataset)
-	  .selectAll("path")
-	  .data(function(d) {return d;})
-	  .enter()
-          .append("path")
-	  .attr("d", linkPathDAttr)
-	  .attr("class", "streamBox")
-	  .attr("fill",  function(d) {return colorScale(idFn(d));});
-
-	// create an initially invisible path that covers all values for a given id
-	// on mouseover we'll use this to hightlight an entry	
-	var pathMouseoverFn = function(d) {
-	  svg.selectAll(".streamBox").attr("class", "backgroundPath");
-	  updateDetailsOnMouseOver(detailsData[idFn(d)]);
-	  var path = d3.select(this);
-          path.attr("class", "highlightedPath");
-	};
-
-	var pathMouseoutFn = function() {
-	  svg.selectAll(".backgroundPath").attr("class", "streamBox");
-	  var path = d3.select(this);
-	  if (path.attr("class") === "highlightedPath") {
-	    path.attr("class", "idPath");	   
-	  }
-	};
-
-	var onClickFn = function() {
-	  var path = d3.select(this);
-	  path.attr("class", (path.attr("class") === "selectedPath") ? "highlightedPath" : "selectedPath");
-	};
-
-	var surroundingPaths = createIdPaths(dataset);
-	
-	svg.append("g")
-	  .selectAll("path")
-	  .data(surroundingPaths)
-	  .enter()
-	  .append("path")
-	  .attr("d", function (d) {return d.d;})
-	  .attr("id", function (d) {return d.name;})
-	  .attr("class", "idPath")	  
-	  .attr("fill",  function(d) { return colorScale(d.name);})
-	  .on("mouseover", pathMouseoverFn)
-	  .on("mouseout", pathMouseoutFn)
-	  .on("click", onClickFn);
-	
-	// add x labels
-	svg.append("g")
-	  .selectAll("text")
-	  .data(dataset)
-	  .enter()
-	  .append("text")
-	  .text(function (d) {return periodFn(d[0]);})
-	  .attr("x", function (d) {
-		  return x(d[0]) + xScale.rangeBand() * 0.4;})
-	  .attr("y", height - 1)
-	  .attr("text-anchor", "middle")
-	  .attr("class", "xAxis");
-
-
-	// ===============================================================================
-	// detials table code
-	function addDetailsTable(parent) {	  
-	  var table = parent.append("table")
-	             .attr("class", "detailsTable");
-
-	  var cols = ["Name", "-", "val"];
-
-	  // add acolumn for each field
-	  table.append("tr")
-	  .selectAll("th")
-	  .data(cols)
-	  .enter()
-	  .append("th")
-	  .text(function(d) {return d;});	  	  
-	  
-	  table.append("tr")
-	    .attr("class", "currDetails")
-	    .selectAll("td")
-	    .data(cols)
-	    .enter()
-	    .append("td");
-	}		
-
-	function updateDetailsOnMouseOver(d) {
-	  var selectedVals = [d.name, "", d.totalVal];
-	  d3.selectAll(".currDetails td")
-	    .data(selectedVals)
-	    .text(function (d) {return d;});
-	}
-
-	// ===============================================================================
-	
-	// calculate the svg path D attribute for a link between the current block
-	// and its previous values (if any)
-	function linkPathDAttr(d) {
-	  var p = calcLinkPoints(d);
-
-	  var val = "M" + p.x1 +"," + p.y2 + "\n";
-	  if (p.midX) {	
-	    val += "C" + p.midX + "," + p.y2 + "," + p.midX + "," + p.y0 + "," + p.x0 + "," + p.y0 +  "\n";
-	    val += "L" + p.x0 + "," + p.y1;
-	    val += "C" + p.midX + "," + p.y1 + "," + p.midX + "," + p.y3 + ","  + p.x1  + "," + p.y3 + "\n";
-	    val += "Z";
-	  }
-	  return val;
-	}
-
-	// create an svg path D attribute for each unique id in our dataset & return as an associative array
-	function createIdPaths(dataset) {
-	  var allPaths = {};
-
-          // d3's path support didnt seem to be a good fit here so we'll manually construct the svg paths
-	  // that completly describe each series in the data
-	  var idx = -1;
-	  for (period in dataset) {
-	    ++idx;
-	    for (val in dataset[period]) {
-	      var d = dataset[period][val];
-	      var p = calcLinkPoints(d, idx);
-	      var path = allPaths[idFn(d)];
-	      if (! path) {
-		// first time we've seen this series, draw top & bottom lines on the box
-		allPaths[idFn(d)] = {
-		  'path': ["M" + p.x1 + "," + p.y2 + "\n", 
-			   "l" + xScale.rangeBand() + ",0\n"],
-		  'retPath': ["Z", 
-			      "L" + p.x1 + "," + p.y3 + "\n"],
-		  'lastPt': d,
-		  'x0' : p.x1,
-		  'y0' : p.y2,
-		  'y1' : p.y3
+		// create an initially invisible path that covers all values for a given id
+		// on mouseover we'll use this to hightlight an entry	
+		var pathMouseoverFn = function(d) {
+		  svg.selectAll(".streamBox").attr("class", "backgroundPath");
+		  detailsTooltip.show(idFn(d));
+		  var path = d3.select(this);
+		  path.attr("class", "highlightedPath");
 		};
-		
-	      }	else {
-		// bezier from prev
-		path.path.push("C" + p.midX + "," + p.y0 + "," + p.midX + "," + p.y2 + "," + p.x1 + "," + p.y2 +  "\n");
-		path.path.push("l" + xScale.rangeBand() + ",0\n");
-		
-		path.retPath.push("C" + p.midX + "," + p.y3+ "," + p.midX + "," + p.y1+ ","  + p.x0 + "," + p.y1+ "\n");
-		path.retPath.push("L" + p.x1 + "," + p.y3 + "\n");
 
-		path.lastPt = d;
-	      }
-	    }
-	  }
+		var pathMouseoutFn = function() {
+		  svg.selectAll(".backgroundPath").attr("class", "streamBox");
+		  detailsTooltip.hide();
+		  var path = d3.select(this);
+		  if (path.attr("class") === "highlightedPath") {
+			path.attr("class", "idPath");	   
+		  }
+		};
 
-	  // join up the 2 halves & return a map of id -> path
-	  var retVal = [];
-	  for(id in allPaths) {
-	    var path = allPaths[id];
-	    var d = "";
-	    for(s in path.path) {
-	      d += path.path[s];
-	    }
-	    d += "l0," + (yScale(path.lastPt.pcntMin) - yScale(path.lastPt.pcntMax)) + "\n";
-	    
-	    while(path.retPath.length > 0) {
-	      d += path.retPath.pop();
-	    }
-	    retVal.push({'name' : id, 
+		var onClickFn = function() {
+		  var path = d3.select(this);
+		  path.attr("class", (path.attr("class") === "selectedPath") ? "highlightedPath" : "selectedPath");
+		};
+
+		var surroundingPaths = createIdPaths(dataset);
+	
+		svg.append("g")
+		  .selectAll("path")
+		  .data(surroundingPaths)
+		  .enter()
+		  .append("path")
+		  .attr("d", function (d) {return d.d;})
+		  .attr("id", function (d) {return d.name;})
+		  .attr("class", "idPath")	  
+		  .attr("fill",  function(d) { return colorScale(d.name);})
+		  .on("mouseover", pathMouseoverFn)
+		  .on("mouseout", pathMouseoutFn)
+		  .on("click", onClickFn);
+	
+		// add x labels
+		svg.append("g")
+		  .selectAll("text")
+		  .data(dataset)
+		  .enter()
+		  .append("text")
+		  .text(function (d) {return periodFn(d[0]);})
+		  .attr("x", function (d) {return x(d[0]) + xScale.rangeBand() * 0.4;})
+		  .attr("y", height - 1)
+		  .attr("text-anchor", "middle")
+		  .attr("class", "xAxis");
+
+
+		// ===============================================================================	
+		// details tool tips
+		function createDetailsTooltip(dataset) {
+		  var detailsData = {};
+		  for (period in dataset) {
+			for (val in dataset[period]) {
+			  var d = dataset[period][val];
+			  var details = detailsData[idFn(d)];
+			  if (!details) {
+				detailsData[idFn(d)] = {'name': idFn(d), 'totalVal': valueFn(d)};
+			  } else {
+			    details['totalVal'] += valueFn(d);
+			  }
+			}
+		  }
+		  var tooltip = d3.select(".tooltip").empty() 
+						? d3.select("body")
+							.append("div")
+							.attr("class", "tooltip")
+							.style("visibility", "visible")
+						: d3.select(".tooltip");
+						
+		  function getHtml(id) {
+		    var d = detailsData[id];
+            return "Name: " + d.name + "," + "Total: " + d.totalVal;
+          }
+		  
+		  return {
+			show: function(id) {
+			  var e = d3.event;
+              var x = e.pageX + 10,
+                  y = e.pageY + 30;
+
+              tooltip
+                .html(getHtml(id))
+                .style("top", y + "px")
+                .style("left", x + "px")
+                .style("visibility", "visible");
+			},
+			hide: function() {
+			  tooltip.style("visibility", "hidden");
+			}
+		  };
+		}
+		// ===============================================================================
+		
+		// calculate the svg path D attribute for a link between the current block
+		// and its previous values (if any)
+		function linkPathDAttr(d) {
+		  var p = calcLinkPoints(d);
+
+		  var val = "M" + p.x1 +"," + p.y2 + "\n";
+		  if (p.midX) {	
+			val += "C" + p.midX + "," + p.y2 + "," + p.midX + "," + p.y0 + "," + p.x0 + "," + p.y0 +  "\n";
+			val += "L" + p.x0 + "," + p.y1;
+			val += "C" + p.midX + "," + p.y1 + "," + p.midX + "," + p.y3 + ","  + p.x1  + "," + p.y3 + "\n";
+			val += "Z";
+		  }
+		  return val;
+		}
+
+		// create an svg path D attribute for each unique id in our dataset & return as an associative array
+		function createIdPaths(dataset) {
+		  var allPaths = {};
+
+		  // d3's path support didnt seem to be a good fit here so we'll manually construct the svg paths
+		  // that completly describe each series in the data
+		  var idx = -1;
+		  for (period in dataset) {
+			++idx;
+			for (val in dataset[period]) {
+			  var d = dataset[period][val];
+			  var p = calcLinkPoints(d, idx);
+			  var path = allPaths[idFn(d)];
+			  if (! path) {
+				// first time we've seen this series, draw top & bottom lines on the box
+				allPaths[idFn(d)] = {
+				  'path': ["M" + p.x1 + "," + p.y2 + "\n", "l" + xScale.rangeBand() + ",0\n"],
+				  'retPath': ["Z", "L" + p.x1 + "," + p.y3 + "\n"],
+				  'lastPt': d,
+				  'x0' : p.x1,
+				  'y0' : p.y2,
+				  'y1' : p.y3
+				};
+			
+			  }	else {
+				// bezier from prev
+				path.path.push("C" + p.midX + "," + p.y0 + "," + p.midX + "," + p.y2 + "," + p.x1 + "," + p.y2 +  "\n");
+				path.path.push("l" + xScale.rangeBand() + ",0\n");
+				
+				path.retPath.push("C" + p.midX + "," + p.y3+ "," + p.midX + "," + p.y1+ ","  + p.x0 + "," + p.y1+ "\n");
+				path.retPath.push("L" + p.x1 + "," + p.y3 + "\n");
+
+				path.lastPt = d;
+			  }
+			}
+		  }
+
+		  // join up the 2 halves & return a map of id -> path
+		  var retVal = [];
+		  for(id in allPaths) {
+			var path = allPaths[id];
+			var d = "";
+			for(s in path.path) {
+			  d += path.path[s];
+			}
+			d += "l0," + (yScale(path.lastPt.pcntMin) - yScale(path.lastPt.pcntMax)) + "\n";
+			
+			while(path.retPath.length > 0) {
+			  d += path.retPath.pop();
+			}
+			retVal.push({'name' : id, 
 			 'd' : d,
 			 'x0': path.x0,
 			 'y0': path.y0,
 			 'y1': path.y1
 			});
-	  }
-	  return retVal;
-	}
+		  }
+		  return retVal;
+		}
 
-	// Calculate the points for the join between 2 blocks
-	// [x1, y2] is the top left of the current block
-	// [x1, y3] is the bottom left of the current block
-	// [x0, y0] is the top right of the previous box
-	// [x0, y1] is the bottom right of the previous box
-	// midX is the x point halfway betweeen the boxes
-	function calcLinkPoints(d, i) {
-	  var y2 = yScale(d.pcntMax);
-	  var idx = i ? i : d.periodIdx;
-	  var points = {'x1': xScale(idx * 2),// +1,
-		        'y2': y2,
-			'y3': y2 + yScale(d.pcntMin) - yScale(d.pcntMax)};
-	  
-	  if (d.prevPcntMax) {
-            points['x0'] = xScale((idx - 1) * 2) + xScale.rangeBand();// - 1;
-	    points['y0'] = yScale(d.prevPcntMax);
-	    points['y1'] = points.y0 + yScale(d.prevPcntMin) - yScale(d.prevPcntMax);
-	    	    
-	    points['midX'] = points.x0 + (points.x1 - points.x0) * 0.5;
-	    
-	  }
-	  return points;
-	}
-      });    
+		// Calculate the points for the join between 2 blocks
+		// [x1, y2] is the top left of the current block
+		// [x1, y3] is the bottom left of the current block
+		// [x0, y0] is the top right of the previous box
+		// [x0, y1] is the bottom right of the previous box
+		// midX is the x point halfway betweeen the boxes
+		function calcLinkPoints(d, i) {
+		  var y2 = yScale(d.pcntMax);
+		  var idx = i ? i : d.periodIdx;
+		  var points = {'x1': xScale(idx * 2),// +1,
+						'y2': y2,
+						'y3': y2 + yScale(d.pcntMin) - yScale(d.pcntMax)};
+		  
+		  if (d.prevPcntMax) {
+			points['x0'] = xScale((idx - 1) * 2) + xScale.rangeBand();// - 1;
+			points['y0'] = yScale(d.prevPcntMax);
+			points['y1'] = points.y0 + yScale(d.prevPcntMin) - yScale(d.prevPcntMax);
+					
+			points['midX'] = points.x0 + (points.x1 - points.x0) * 0.5;
+			
+		  }
+		  return points;
+		}
+	});    
 
     // return a function that given a data object returns a color
     function createColorScale(dataset) {
       var colorIndexes = {};
       var idx = 0;
       for (period in dataset) {
-	for (val in dataset[period]) {
-	  var id = idFn(dataset[period][val]);
-	  if (! colorIndexes.hasOwnProperty(id)) {
-	    colorIndexes[id] = idx++;  
-	  }	  
-	}
+		for (val in dataset[period]) {
+		  var id = idFn(dataset[period][val]);
+		  if (! colorIndexes.hasOwnProperty(id)) {
+			colorIndexes[id] = idx++;  
+		  }	  
+		}
       }      
 
       var d3Colors = d3.scale.category20();
 
       return function(id) {
-	return d3Colors(colorIndexes[id]);
+		return d3Colors(colorIndexes[id]);
       };      
     }
   }
@@ -333,9 +339,14 @@ function streamRank() {
   };
   
   chart.periodFn = function(_) {
-  	  
      if (!arguments.length) return periodFn;
      periodFn = _;
+     return chart;
+  };
+  
+  chart.valueFn = function(_) {
+     if (!arguments.length) return valueFn;
+     valueFn = _;
      return chart;
   };
   
@@ -357,7 +368,6 @@ function streamRankLayout() {
   var valueFn = function(d) {return d.val;};
   var periodFn = function(d) { return d.x;};
   var idFn = function(d) {return d.name;};
-
 
   function entries(data) {
 
@@ -385,25 +395,25 @@ function streamRankLayout() {
       var startPcnt = (1 - extents[period].sum / globalMax) / 2;
       var numSeriesInPeriod = groupedData[period].length;
       for(var i=0; i < numSeriesInPeriod; ++i) {
-	var o = Object.create(groupedData[period][i]);
-	var objId = idFn(o);
+		var o = Object.create(groupedData[period][i]);
+		var objId = idFn(o);
 
-	var maxPcnt = startPcnt + valueFn(o) / globalMax;
-	o.pcntMin = startPcnt;
-	o.pcntMax = maxPcnt;
-	o.rank = numSeriesInPeriod - i;
+		var maxPcnt = startPcnt + valueFn(o) / globalMax;
+		o.pcntMin = startPcnt;
+		o.pcntMax = maxPcnt;
+		o.rank = numSeriesInPeriod - i;
 
-	var prev = prevVals[objId];
-	if (prev) {
-	  o.prevPcntMin = prev.pcntMin;
-	  o.prevPcntMax = prev.pcntMax;
-	  o.prevRank = prev.rank;
-	  o.periodIdx = period;
-	}
+		var prev = prevVals[objId];
+		if (prev) {
+		  o.prevPcntMin = prev.pcntMin;
+		  o.prevPcntMax = prev.pcntMax;
+		  o.prevRank = prev.rank;
+		  o.periodIdx = period;
+		}
 
-	groupedData[period][i] = o;
-	prevVals[objId] = o;
-	startPcnt = maxPcnt;			
+		groupedData[period][i] = o;
+		prevVals[objId] = o;
+		startPcnt = maxPcnt;			
       }
     }
 
